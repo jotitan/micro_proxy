@@ -32,7 +32,17 @@ func main() {
 	}
 }
 
+func acme(w http.ResponseWriter, r *http.Request) {
+	log.Println("ACME", r.URL.Path)
+}
+
 func routing(w http.ResponseWriter, r *http.Request) {
+	// Acme challenge
+	if strings.HasPrefix(r.URL.Path, "/acme") {
+		acme(w, r)
+		return
+	}
+
 	// Case redirection
 	if pos := strings.Index(r.URL.Path[1:], "/"); pos != -1 {
 		subPath := r.URL.Path[1 : pos+1]
