@@ -38,7 +38,7 @@ func acme(w http.ResponseWriter, r *http.Request) {
 
 func routing(w http.ResponseWriter, r *http.Request) {
 	// Acme challenge
-	if strings.HasPrefix(r.URL.Path, "/acme") {
+	if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
 		acme(w, r)
 		return
 	}
