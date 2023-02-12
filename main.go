@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 )
 import "strings"
@@ -33,7 +34,11 @@ func main() {
 }
 
 func acme(w http.ResponseWriter, r *http.Request) {
-	log.Println("ACME", r.URL.Path)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Println("GOt errOR", err)
+	}
+	log.Println("ACME", r.URL.Path, r.Method, string(data))
 }
 
 func routing(w http.ResponseWriter, r *http.Request) {
