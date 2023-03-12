@@ -1,21 +1,25 @@
 package main
 
 import (
-	"io"
 	"net/http"
+	"path/filepath"
+	"regexp"
 )
 import "strings"
 import "os"
 import "log"
 
 var proxyRoutes map[string]proxyWrapper
+var challengesFolder string
 
 func main() {
 	if len(os.Args) != 3 {
 		log.Println("Need parameters <port> <conf>")
 		os.Exit(1)
 	}
-	routes, certificate := extractConfig(os.Args[2])
+	var routes map[string]routeProxy
+	var certificate certificateConfig
+	routes, certificate, challengesFolder = extractConfig(os.Args[2])
 	proxyRoutes = createProxyRoutes(routes)
 
 	server := http.NewServeMux()
@@ -34,11 +38,15 @@ func main() {
 }
 
 func acme(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		log.Println("GOt errOR", err)
+	file := r.URL.Path[len("/.well-known/acme-challenge")+1:]
+	reg := regexp.MustCompile("[0-9a-zA-Z_-]+")
+	if !reg.MatchString(file) {
+		log.Println("Error, bad file", file)
+		http.Error(w, "bad request", 400)
+	} else {
+		log.Println("Challenge", r.URL.Path, file)
+		http.ServeFile(w, r, filepath.Join(challengesFolder, file))
 	}
-	log.Println("ACME", r.URL.Path, r.Method, string(data))
 }
 
 func routing(w http.ResponseWriter, r *http.Request) {

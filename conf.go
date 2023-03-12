@@ -18,9 +18,10 @@ type routeProxy struct {
 }
 
 // Structure of conf file : Json like {[{route:,host:},{route:,host:}]}
-func extractConfig(path string) (map[string]routeProxy, certificateConfig) {
+func extractConfig(path string) (map[string]routeProxy, certificateConfig, string) {
 	routes := make(map[string]routeProxy, 0)
 	certif := certificateConfig{}
+	challengesFolder := ""
 	if data, err := os.ReadFile(path); err == nil {
 		config := make(map[string]interface{}, 0)
 		json.Unmarshal(data, &config)
@@ -32,6 +33,9 @@ func extractConfig(path string) (map[string]routeProxy, certificateConfig) {
 			}
 			routes[routeDetail["route"].(string)] = routeProxy{name: routeDetail["route"].(string), host: routeDetail["host"].(string), sse: useSse}
 		}
+		if cf, ok := config["challenges-folder"]; ok {
+			challengesFolder = cf.(string)
+		}
 		if certificate, ok := config["certificate"]; ok {
 			if value, exist := certificate.(map[string]interface{})["key"]; exist {
 				certif.pathKey = value.(string)
@@ -39,5 +43,5 @@ func extractConfig(path string) (map[string]routeProxy, certificateConfig) {
 			}
 		}
 	}
-	return routes, certif
+	return routes, certif, challengesFolder
 }
