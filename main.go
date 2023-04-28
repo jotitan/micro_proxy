@@ -39,6 +39,7 @@ func main() {
 
 func acme(w http.ResponseWriter, r *http.Request) {
 	file := r.URL.Path[len("/.well-known/acme-challenge")+1:]
+	log.Println("Run acme challenge", file)
 	reg := regexp.MustCompile("[0-9a-zA-Z_-]+")
 	if !reg.MatchString(file) {
 		log.Println("Error, bad file", file)
