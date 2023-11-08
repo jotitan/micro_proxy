@@ -12,28 +12,33 @@ import "log"
 var proxyRoutes map[string]proxyWrapper
 var challengesFolder string
 
+var security SecurityAccess2
+
 func main() {
-	if len(os.Args) != 3 {
+	if len(os.Args) < 3 {
 		log.Println("Need parameters <port> <conf>")
 		os.Exit(1)
 	}
-	var routes map[string]routeProxy
-	var certificate certificateConfig
-	routes, certificate, challengesFolder = extractConfig(os.Args[2])
-	proxyRoutes = createProxyRoutes(routes)
 
+	config, err := extractConfig(os.Args[2])
+	if err != nil {
+		log.Fatal("Impossible to extract config", err)
+	}
+
+	proxyRoutes = createProxyRoutes(config.Routes)
+	challengesFolder = config.ChallengesFolder
+	security = NewSecurityAccess(config)
 	server := http.NewServeMux()
+	server.HandleFunc("/callback", callback)
 	server.HandleFunc("/", routing)
 	port := os.Args[1]
 
-	if !strings.EqualFold("", certificate.pathKey) {
-		log.Println("Start secured proxy on port", port, "with", len(routes), "routes")
-		err := http.ListenAndServeTLS(":"+port, certificate.pathCrt, certificate.pathKey, server)
-		log.Println("Error", err)
+	if !strings.EqualFold("", config.Certificate.PathKey) {
+		log.Println("Start secured proxy on port", port, "with", len(proxyRoutes), "routes")
+		log.Fatal(http.ListenAndServeTLS(":"+port, config.Certificate.PathCrt, config.Certificate.PathKey, server))
 	} else {
-		log.Println("Start proxy on port", port, "with", len(routes), "routes")
-		err := http.ListenAndServe(":"+port, server)
-		log.Println("Error", err)
+		log.Println("Start proxy on port", port, "with", len(proxyRoutes), "routes")
+		log.Fatal(http.ListenAndServe(":"+port, server))
 	}
 }
 
@@ -50,44 +55,101 @@ func acme(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// callback is used by security
+func callback(w http.ResponseWriter, r *http.Request) {
+	// Check if token already exist
+	if security.isConnected(r) {
+		redirect(w, r)
+		return
+	}
+	scope := r.FormValue("state")
+	if r.FormValue("kind") == "guest" {
+		// Connect as guest
+		if proxy, exist := proxyRoutes[scope]; exist {
+			if security.checkAndConnectAsGuest(w, proxy, scope) {
+				redirect(w, r)
+				return
+			}
+		}
+		http.Error(w, "Impossible to connect as guest, get out", http.StatusUnauthorized)
+	} else {
+		if email, err := security.provider.GetEmailFromAuthent(r); err == nil {
+			security.setJWT(w, email, scope, security.provider.IsEmailAdmin(email), false)
+			redirect(w, r)
+		} else {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+		}
+	}
+}
+
+func redirect(w http.ResponseWriter, r *http.Request) {
+	state := r.FormValue("state")
+	w.Header().Set("Location", "/"+state)
+	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
 func routing(w http.ResponseWriter, r *http.Request) {
 	log.Println("Receive request", r.URL.Path)
-	// Acme challenge
-	if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
-		acme(w, r)
+
+	if manageAcme(w, r) || manageLongPath(w, r) || manageRoot(w, r) || manageReferee(w, r) {
 		return
 	}
 
-	// Case redirection
-	if pos := strings.Index(r.URL.Path[1:], "/"); pos != -1 {
-		subPath := r.URL.Path[1 : pos+1]
-		if route, exist := proxyRoutes[subPath]; exist {
-			// Redirect
-			log.Println(r.URL, r.Header.Get("Accept"))
-			serve(w, r, subPath, r.URL.Path[1+pos:], route)
-			return
-		}
-	}
-	// Case root
-	if route, exist := proxyRoutes[r.URL.Path[1:]]; exist {
-		log.Println(r.URL, r.Header.Get("Accept"))
-		serve(w, r, r.URL.Path[1:], "/", route)
-		return
-	}
-
-	// Check if referee contains route, if true, redirect to also, range over routes
-	for route, gateway := range proxyRoutes {
-		if strings.Index(r.Referer(), route) != -1 {
-			log.Println(r.URL, r.Header.Get("Accept"))
-			serve(w, r, route, r.URL.Path[1:], gateway)
-			return
-		}
-	}
 	log.Println("Unknown route =>", r.URL.Path)
 	http.Error(w, "Unknown route", 404)
 }
 
+// manageAcme is used to provides challenges file from certbot
+func manageAcme(w http.ResponseWriter, r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, "/.well-known/acme-challenge") {
+		acme(w, r)
+		return true
+	}
+	return false
+}
+
+// manageLongPath manage a complete path by extracting the beginning to find the route
+func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
+	if pos := strings.Index(r.URL.Path[1:], "/"); pos != -1 {
+		subPath := r.URL.Path[1 : pos+1]
+		if route, exist := proxyRoutes[subPath]; exist {
+			// Redirect
+			serve(w, r, subPath, r.URL.Path[1+pos:], route)
+			return true
+		}
+	}
+	return false
+}
+
+// manageRoot test if route exist and serve request
+func manageRoot(w http.ResponseWriter, r *http.Request) bool {
+	if route, exist := proxyRoutes[r.URL.Path[1:]]; exist {
+		serve(w, r, r.URL.Path[1:], "/", route)
+		return true
+	}
+	return false
+}
+
+// Check if referee contains route, if true, redirect to also, range over routes
+func manageReferee(w http.ResponseWriter, r *http.Request) bool {
+	for route, gateway := range proxyRoutes {
+		if strings.Index(r.Referer(), route) != -1 {
+			serve(w, r, route, r.URL.Path[1:], gateway)
+			return true
+		}
+	}
+	return false
+}
+
 func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapper proxyWrapper) {
+	// If security, check token exists
+	doContinue, err := security.check(w, r, wrapper, routeName)
+	if err != nil {
+		http.Error(w, "No rights, get out", http.StatusUnauthorized)
+	}
+	if err != nil || !doContinue {
+		return
+	}
 	r.URL.Path = path
 	r.Header.Set("proxy-redirect", routeName+"/")
 	// SSE case

@@ -8,24 +8,31 @@ import (
 import "net/http/httputil"
 import "net/url"
 
-func createProxyRoutes(routes map[string]routeProxy) map[string]proxyWrapper {
+func createProxyRoutes(routes []routeProxy) map[string]proxyWrapper {
 	proxies := make(map[string]proxyWrapper, len(routes))
-	for route, detail := range routes {
-		wrapper := proxyWrapper{standard: newProxy(detail.host, false)}
-		if detail.sse {
-			wrapper.sse = newProxy(detail.host, true)
-		}
-		proxies[route] = wrapper
+	for _, route := range routes {
+		proxies[route.Name] = createProxy(route)
 	}
 	return proxies
 }
 
+func createProxy(detail routeProxy) proxyWrapper {
+	wrapper := proxyWrapper{standard: newProxy(detail.Host, false), security: detail.Security, guest: detail.Guest}
+	if detail.Sse {
+		wrapper.sse = newProxy(detail.Host, true)
+	}
+	return wrapper
+}
+
+// proxyWrapper wrap the proxy by giving standard implement and version which accept SSE connexion
 type proxyWrapper struct {
 	standard *httputil.ReverseProxy
 	sse      *httputil.ReverseProxy
+	security bool
+	guest    bool
 }
 
-// Create a new sse proxy
+// Create a new Sse proxy
 func newProxy(proxyUrl string, isSse bool) *httputil.ReverseProxy {
 	u, err := url.Parse(proxyUrl)
 	if err != nil {
@@ -38,10 +45,10 @@ func newProxy(proxyUrl string, isSse bool) *httputil.ReverseProxy {
 		//Prolong timeouts
 		r.Transport = &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
-			Dial: (&net.Dialer{
+			DialContext: (&net.Dialer{
 				Timeout:   24 * time.Hour,
 				KeepAlive: 24 * time.Hour,
-			}).Dial,
+			}).DialContext,
 			TLSHandshakeTimeout: 60 * time.Second,
 		}
 	}
