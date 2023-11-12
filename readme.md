@@ -12,6 +12,7 @@ Configuration files :
 ```json
 {
   "challenges-folder": "folder where challenses let's encrypted are generated",
+  "monitoring_url": "url of monitoring jotitan server",
   "routes": [
     {
       "route": "path_of_route",

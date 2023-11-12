@@ -53,6 +53,7 @@ type Config struct {
 	Certificate      certificateConfig `json:"certificate"`
 	Routes           []routeProxy      `json:"routes"`
 	Security         Security          `json:"security"`
+	Monitoring       string            `json:"monitoring_url"`
 }
 
 func extractConfig(path string) (Config, error) {

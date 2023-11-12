@@ -46,11 +46,9 @@ type SecurityProvider interface {
 }
 
 type SecurityAccess2 struct {
-	enable           bool
-	hs256SecretKey   string
-	provider         SecurityProvider
-	authorizedEmails []string
-	adminEmails      []string
+	enable         bool
+	hs256SecretKey string
+	provider       SecurityProvider
 }
 
 func NewSecurityAccess(conf Config) SecurityAccess2 {
@@ -84,10 +82,17 @@ func (sa SecurityAccess2) check(w http.ResponseWriter, r *http.Request, wrapper 
 
 func (sa SecurityAccess2) checkRights(token *jwt.Token, wrapper proxyWrapper, path string) (bool, error) {
 	// If token is guest, check wrapper enable guest and path is the good
-	isGuest, existGuest := token.Claims.(jwt.MapClaims)["guest"].(bool)
-	scope, existScope := token.Claims.(jwt.MapClaims)["scope"].(string)
+	claims := token.Claims.(jwt.MapClaims)
+	isGuest, existGuest := claims["guest"].(bool)
+	scope, existScope := claims["scope"].(string)
 	if existGuest && isGuest {
 		if !wrapper.guest || !existScope || scope != path {
+			return false, errors.New("no access here")
+		}
+	} else {
+		// Check user email exist in list
+		email, existEmail := claims["email"].(string)
+		if !existEmail || !sa.provider.IsEmailAuthorized(email) {
 			return false, errors.New("no access here")
 		}
 	}

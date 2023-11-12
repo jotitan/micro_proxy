@@ -14,6 +14,8 @@ var challengesFolder string
 
 var security SecurityAccess2
 
+var monitoring Monitoring
+
 func main() {
 	if len(os.Args) < 3 {
 		log.Println("Need parameters <port> <conf>")
@@ -28,6 +30,8 @@ func main() {
 	proxyRoutes = createProxyRoutes(config.Routes)
 	challengesFolder = config.ChallengesFolder
 	security = NewSecurityAccess(config)
+	monitoring = NewMonitoring(config.Monitoring)
+
 	server := http.NewServeMux()
 	server.HandleFunc("/callback", callback)
 	server.HandleFunc("/", routing)
@@ -71,13 +75,13 @@ func callback(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		http.Error(w, "Impossible to connect as guest, get out", http.StatusUnauthorized)
+		errorNoGuest(w)
 	} else {
 		if email, err := security.provider.GetEmailFromAuthent(r); err == nil {
 			security.setJWT(w, email, scope, security.provider.IsEmailAdmin(email), false)
 			redirect(w, r)
 		} else {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			errorNoLogin(w, err.Error())
 		}
 	}
 }
@@ -96,7 +100,8 @@ func routing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Println("Unknown route =>", r.URL.Path)
-	http.Error(w, "Unknown route", 404)
+
+	errorNoRoute(w)
 }
 
 // manageAcme is used to provides challenges file from certbot
@@ -145,7 +150,7 @@ func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapp
 	// If security, check token exists
 	doContinue, err := security.check(w, r, wrapper, routeName)
 	if err != nil {
-		http.Error(w, "No rights, get out", http.StatusUnauthorized)
+		errorNoRight(w)
 	}
 	if err != nil || !doContinue {
 		return
@@ -157,6 +162,37 @@ func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapp
 		log.Println("Serve SSE on ", routeName)
 		wrapper.sse.ServeHTTP(w, r)
 	} else {
+		logRoute(routeName, path)
 		wrapper.standard.ServeHTTP(w, r)
 	}
+}
+
+func logRoute(route, path string) {
+	monitoring.addMetric("success")
+	monitoring.addMetric(route)
+	isRequest := !strings.Contains(path, ".") || strings.Contains(path, "?")
+	if isRequest {
+		monitoring.addMetric("request")
+	} else {
+		monitoring.addMetric("file")
+	}
+}
+
+func errorNoRight(w http.ResponseWriter) {
+	http.Error(w, "No rights, get out", http.StatusUnauthorized)
+	monitoring.addMetric("no-right")
+}
+
+func errorNoLogin(w http.ResponseWriter, err string) {
+	http.Error(w, err, http.StatusUnauthorized)
+	monitoring.addMetric("no-log")
+}
+
+func errorNoRoute(w http.ResponseWriter) {
+	http.Error(w, "no route", http.StatusNotFound)
+	monitoring.addMetric("no-route")
+}
+func errorNoGuest(w http.ResponseWriter) {
+	http.Error(w, "Impossible to connect as guest, get out", http.StatusUnauthorized)
+	monitoring.addMetric("no-guest")
 }

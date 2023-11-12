@@ -23,10 +23,17 @@ type OAuth2Provider interface {
 	CheckAndExtractData(token string) (string, error)
 }
 
+type set map[string]struct{}
+
+func (s set) has(value string) bool {
+	_, exist := s[value]
+	return exist
+}
+
 type OAuth2SecurityProvider struct {
 	provider         OAuth2Provider
-	emailsAuthorized []string
-	emailsAdmin      []string
+	emailsAuthorized set
+	emailsAdmin      set
 }
 
 func (O OAuth2SecurityProvider) GenerateConnectionButton(context string) string {
@@ -55,29 +62,27 @@ func (O OAuth2SecurityProvider) GetEmailFromAuthent(r *http.Request) (string, er
 }
 
 func (O OAuth2SecurityProvider) IsEmailAuthorized(userEmail string) bool {
-	for _, email := range O.emailsAuthorized {
-		if email == userEmail {
-			return true
-		}
-	}
-	return false
+	return O.emailsAuthorized.has(userEmail)
 }
 
 func (O OAuth2SecurityProvider) IsEmailAdmin(userEmail string) bool {
-	for _, email := range O.emailsAdmin {
-		if email == userEmail {
-			return true
-		}
-	}
-	return false
+	return O.emailsAdmin.has(userEmail)
 }
 
 func NewOAuth2Provider(conf OAuth2Config) OAuth2SecurityProvider {
 	return OAuth2SecurityProvider{
 		provider:         newProvider(conf),
-		emailsAuthorized: conf.AuthorizedEmails,
-		emailsAdmin:      conf.AdminAuthorizedEmails,
+		emailsAuthorized: convertListToSet(conf.AuthorizedEmails),
+		emailsAdmin:      convertListToSet(conf.AdminAuthorizedEmails),
 	}
+}
+
+func convertListToSet(list []string) set {
+	s := make(map[string]struct{}, len(list))
+	for _, l := range list {
+		s[l] = struct{}{}
+	}
+	return s
 }
 
 func newProvider(conf OAuth2Config) OAuth2Provider {
