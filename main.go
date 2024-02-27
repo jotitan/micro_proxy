@@ -129,6 +129,11 @@ func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
 // manageRoot test if route exist and serve request
 func manageRoot(w http.ResponseWriter, r *http.Request) bool {
 	if route, exist := proxyRoutes[r.URL.Path[1:]]; exist {
+		if !strings.HasSuffix(r.URL.Path[1:], "/") {
+			w.Header().Set("Location", "/"+r.URL.Path[1:]+"/")
+			w.WriteHeader(308)
+			return true
+		}
 		serve(w, r, r.URL.Path[1:], "/", route)
 		return true
 	}
