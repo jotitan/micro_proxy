@@ -16,6 +16,17 @@ func createProxyRoutes(routes []routeProxy) map[string]proxyWrapper {
 	return proxies
 }
 
+func createProxyRoutesByOrigin(originsConfig map[string]OriginConfig) map[string]map[string]proxyWrapper {
+	origins := make(map[string]map[string]proxyWrapper, len(originsConfig))
+	for name, origin := range originsConfig {
+		origins[name] = make(map[string]proxyWrapper, len(origin.Routes))
+		for _, route := range origin.Routes {
+			origins[name][route.Name] = createProxy(route)
+		}
+	}
+	return origins
+}
+
 func createProxy(detail routeProxy) proxyWrapper {
 	wrapper := proxyWrapper{standard: newProxy(detail.Host, false), security: detail.Security, guest: detail.Guest}
 	if detail.Sse {

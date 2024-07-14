@@ -48,12 +48,18 @@ type routeProxy struct {
 	Guest bool `json:"guest"`
 }
 
+type OriginConfig struct {
+	Routes []routeProxy `json:"routes"`
+}
+
 type Config struct {
-	ChallengesFolder string            `json:"challenges-folder"`
-	Certificate      certificateConfig `json:"certificate"`
-	Routes           []routeProxy      `json:"routes"`
-	Security         Security          `json:"security"`
-	Monitoring       string            `json:"monitoring_url"`
+	ChallengesFolder string                  `json:"challenges-folder"`
+	Certificate      certificateConfig       `json:"certificate"`
+	ProxyByRoute     bool                    `json:"by_route"`
+	Routes           []routeProxy            `json:"routes"`
+	Origins          map[string]OriginConfig `json:"origins"`
+	Security         Security                `json:"security"`
+	Monitoring       string                  `json:"monitoring_url"`
 }
 
 func extractConfig(path string) (Config, error) {
@@ -64,10 +70,10 @@ func extractConfig(path string) (Config, error) {
 			return Config{}, err
 		}
 
-		routes := make(map[string]routeProxy, 0)
+		/*routes := make(map[string]routeProxy, 0)
 		for _, route := range config.Routes {
 			routes[route.Name] = routeProxy{Name: route.Name, Host: route.Host, Sse: route.Sse}
-		}
+		}*/
 		return config, nil
 	} else {
 		return Config{}, err

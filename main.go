@@ -10,6 +10,7 @@ import "os"
 import "log"
 
 var proxyRoutes map[string]proxyWrapper
+var originsRoutes map[string]map[string]proxyWrapper
 var challengesFolder string
 
 var security SecurityAccess2
@@ -26,8 +27,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Impossible to extract config", err)
 	}
-
-	proxyRoutes = createProxyRoutes(config.Routes)
+	if config.ProxyByRoute {
+		proxyRoutes = createProxyRoutes(config.Routes)
+	} else {
+		originsRoutes = createProxyRoutesByOrigin(config.Origins)
+	}
 	challengesFolder = config.ChallengesFolder
 	security = NewSecurityAccess(config)
 	monitoring = NewMonitoring(config.Monitoring)
@@ -69,7 +73,7 @@ func callback(w http.ResponseWriter, r *http.Request) {
 	scope := r.FormValue("state")
 	if r.FormValue("kind") == "guest" {
 		// Connect as guest
-		if proxy, exist := proxyRoutes[scope]; exist {
+		if proxy, exist := searchRoute(scope, getHost(r)); exist {
 			if security.checkAndConnectAsGuest(w, proxy, scope) {
 				redirect(w, r)
 				return
@@ -113,11 +117,33 @@ func manageAcme(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
+func searchRoute(route, host string) (proxyWrapper, bool) {
+	if len(proxyRoutes) > 0 {
+		proxy, exist := proxyRoutes[route]
+		return proxy, exist
+	}
+	if routes, exist := originsRoutes[host]; !exist {
+		return proxyWrapper{}, false
+	} else {
+		proxy, exist := routes[route]
+		return proxy, exist
+	}
+}
+
+func getHost(r *http.Request) string {
+	reg := regexp.MustCompile("(:?https?://)?([^:]+)(:?:[0-9]+)?")
+	results := reg.FindAllStringSubmatch(r.Host, 1)
+	if len(results) == 0 {
+		return r.Host
+	}
+	return results[0][2]
+}
+
 // manageLongPath manage a complete path by extracting the beginning to find the route
 func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
 	if pos := strings.Index(r.URL.Path[1:], "/"); pos != -1 {
 		subPath := r.URL.Path[1 : pos+1]
-		if route, exist := proxyRoutes[subPath]; exist {
+		if route, exist := searchRoute(subPath, getHost(r)); exist {
 			// Redirect
 			serve(w, r, subPath, r.URL.Path[1+pos:], route)
 			return true
@@ -128,7 +154,7 @@ func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
 
 // manageRoot test if route exist and serve request
 func manageRoot(w http.ResponseWriter, r *http.Request) bool {
-	if route, exist := proxyRoutes[r.URL.Path[1:]]; exist {
+	if route, exist := searchRoute(r.URL.Path[1:], getHost(r)); exist {
 		if !strings.HasSuffix(r.URL.Path[1:], "/") {
 			w.Header().Set("Location", "/"+r.URL.Path[1:]+"/")
 			w.WriteHeader(308)
