@@ -117,17 +117,21 @@ func manageAcme(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func searchRoute(route, host string) (proxyWrapper, bool) {
+func getRoutes(host string) map[string]proxyWrapper {
 	if len(proxyRoutes) > 0 {
-		proxy, exist := proxyRoutes[route]
-		return proxy, exist
+		return proxyRoutes
 	}
 	if routes, exist := originsRoutes[host]; !exist {
-		return proxyWrapper{}, false
+		return map[string]proxyWrapper{}
 	} else {
-		proxy, exist := routes[route]
-		return proxy, exist
+		return routes
 	}
+}
+
+func searchRoute(route, host string) (proxyWrapper, bool) {
+	routes := getRoutes(host)
+	proxy, exist := routes[route]
+	return proxy, exist
 }
 
 func getHost(r *http.Request) string {
@@ -168,7 +172,8 @@ func manageRoot(w http.ResponseWriter, r *http.Request) bool {
 
 // Check if referee contains route, if true, redirect to also, range over routes
 func manageReferee(w http.ResponseWriter, r *http.Request) bool {
-	for route, gateway := range proxyRoutes {
+	routes := getRoutes(getHost(r))
+	for route, gateway := range routes {
 		if strings.Index(r.Referer(), route) != -1 {
 			serve(w, r, route, r.URL.Path[1:], gateway)
 			return true
