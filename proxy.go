@@ -27,8 +27,16 @@ func createProxyRoutesByOrigin(originsConfig map[string]OriginConfig) map[string
 	return origins
 }
 
+func getListAsSet(data []string) set {
+	m := make(map[string]struct{}, len(data))
+	for _, d := range data {
+		m[d] = struct{}{}
+	}
+	return m
+}
+
 func createProxy(detail routeProxy) proxyWrapper {
-	wrapper := proxyWrapper{standard: newProxy(detail.Host, false), security: detail.Security, guest: detail.Guest}
+	wrapper := proxyWrapper{standard: newProxy(detail.Host, false), security: detail.Security, guest: detail.Guest, admins: getListAsSet(detail.AdminAuthorizedEmails)}
 	if detail.Sse {
 		wrapper.sse = newProxy(detail.Host, true)
 	}
@@ -41,6 +49,7 @@ type proxyWrapper struct {
 	sse      *httputil.ReverseProxy
 	security bool
 	guest    bool
+	admins   set
 }
 
 // Create a new Sse proxy

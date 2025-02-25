@@ -23,19 +23,26 @@ type BasicConfig struct {
 }
 
 type OAuth2Config struct {
-	Provider              string   `json:"provider"`
-	ClientId              string   `json:"client_id"`
-	ClientSecret          string   `json:"client_secret"`
-	RedirectUrl           string   `json:"redirect_url"`
-	AuthorizedEmails      []string `json:"emails"`
-	AdminAuthorizedEmails []string `json:"admin_emails"`
+	Provider         string   `json:"provider"`
+	ClientId         string   `json:"client_id"`
+	ClientSecret     string   `json:"client_secret"`
+	RedirectUrl      string   `json:"redirect_url"`
+	AuthorizedEmails []string `json:"emails"`
 }
 
 type Security struct {
-	Type      SecurityType `json:"type"`
-	JWTSecret string       `json:"secret"`
-	Basic     BasicConfig  `json:"basic"`
-	OAuth2    OAuth2Config `json:"oauth2"`
+	Type              SecurityType     `json:"type"`
+	SymetricSignature bool             `json:"symetric_signature"`
+	JWTSecret         string           `json:"secret"`
+	KeysFolder        string           `json:"folder_keys"`
+	Basic             BasicConfig      `json:"basic"`
+	OAuth2            OAuth2Config     `json:"oauth2"`
+	Providers         []ProviderConfig `json:"providers"`
+}
+
+type ProviderConfig struct {
+	Name   string       `json:"name"`
+	Config OAuth2Config `json:"config"`
 }
 
 type routeProxy struct {
@@ -46,6 +53,9 @@ type routeProxy struct {
 	Security bool `json:"security"`
 	// Guest connection is possible, only if security is true
 	Guest bool `json:"guest"`
+	// List of authorized providers
+	SecurityProviders     []string `json:"security-providers"`
+	AdminAuthorizedEmails []string `json:"admin_emails"`
 }
 
 type OriginConfig struct {
@@ -69,11 +79,6 @@ func extractConfig(path string) (Config, error) {
 		if err != nil {
 			return Config{}, err
 		}
-
-		/*routes := make(map[string]routeProxy, 0)
-		for _, route := range config.Routes {
-			routes[route.Name] = routeProxy{Name: route.Name, Host: route.Host, Sse: route.Sse}
-		}*/
 		return config, nil
 	} else {
 		return Config{}, err

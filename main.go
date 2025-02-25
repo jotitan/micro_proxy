@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -13,7 +14,7 @@ var proxyRoutes map[string]proxyWrapper
 var originsRoutes map[string]map[string]proxyWrapper
 var challengesFolder string
 
-var security SecurityAccess2
+var security SecurityAccess
 
 var monitoring Monitoring
 
@@ -37,15 +38,16 @@ func main() {
 	monitoring = NewMonitoring(config.Monitoring)
 
 	server := http.NewServeMux()
+	server.HandleFunc("/signature/public-key", getPublicKey)
 	server.HandleFunc("/callback", callback)
 	server.HandleFunc("/", routing)
 	port := os.Args[1]
 
 	if !strings.EqualFold("", config.Certificate.PathKey) {
-		log.Println("Start secured proxy on port", port, "with", len(proxyRoutes), "routes")
+		log.Println(fmt.Sprintf("Start secured proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
 		log.Fatal(http.ListenAndServeTLS(":"+port, config.Certificate.PathCrt, config.Certificate.PathKey, server))
 	} else {
-		log.Println("Start proxy on port", port, "with", len(proxyRoutes), "routes")
+		log.Println(fmt.Sprintf("Start proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
 		log.Fatal(http.ListenAndServe(":"+port, server))
 	}
 }
@@ -64,6 +66,14 @@ func acme(w http.ResponseWriter, r *http.Request) {
 }
 
 // callback is used by security
+func getPublicKey(w http.ResponseWriter, r *http.Request) {
+	if data, err := security.signatureTool.GetPublicKey(r.FormValue("kid")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	} else {
+		w.Write(data)
+	}
+}
+
 func callback(w http.ResponseWriter, r *http.Request) {
 	// Check if token already exist
 	if security.isConnected(r) {
@@ -73,6 +83,10 @@ func callback(w http.ResponseWriter, r *http.Request) {
 	scope := r.FormValue("state")
 	if r.FormValue("kind") == "guest" {
 		// Connect as guest
+		// If / exists, cut after the first (cause full path)
+		if pos := strings.Index(scope, "/"); pos != -1 {
+			scope = scope[0:pos]
+		}
 		if proxy, exist := searchRoute(scope, getHost(r)); exist {
 			if security.checkAndConnectAsGuest(w, proxy, scope) {
 				redirect(w, r)
@@ -82,7 +96,7 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		errorNoGuest(w)
 	} else {
 		if email, err := security.provider.GetEmailFromAuthent(r); err == nil {
-			security.setJWT(w, email, scope, security.provider.IsEmailAdmin(email), false)
+			security.setJWT(w, email, scope, getAdminByScope(email, getHost(r)), false)
 			redirect(w, r)
 		} else {
 			errorNoLogin(w, err.Error())
@@ -97,13 +111,13 @@ func redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func routing(w http.ResponseWriter, r *http.Request) {
-	log.Println("Receive request", r.URL.Path)
+	logNice("Receive request", r.URL.Path)
 
 	if manageAcme(w, r) || manageLongPath(w, r) || manageRoot(w, r) || manageReferee(w, r) {
 		return
 	}
 
-	log.Println("Unknown route =>", r.URL.Path)
+	logNice("Unknown route =>", r.URL.Path)
 
 	errorNoRoute(w)
 }
@@ -132,6 +146,14 @@ func searchRoute(route, host string) (proxyWrapper, bool) {
 	routes := getRoutes(host)
 	proxy, exist := routes[route]
 	return proxy, exist
+}
+
+func getAdminByScope(email, host string) map[string]bool {
+	m := make(map[string]bool)
+	for name, route := range getRoutes(host) {
+		m[name] = route.admins.has(email)
+	}
+	return m
 }
 
 func getHost(r *http.Request) string {
@@ -231,4 +253,11 @@ func errorNoRoute(w http.ResponseWriter) {
 func errorNoGuest(w http.ResponseWriter) {
 	http.Error(w, "Impossible to connect as guest, get out", http.StatusUnauthorized)
 	monitoring.addMetric("no-guest")
+}
+
+func logNice(args ...string) {
+	if strings.HasSuffix(args[len(args)-1], ".map") {
+		return
+	}
+	log.Println(args)
 }

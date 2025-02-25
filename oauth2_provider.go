@@ -33,7 +33,6 @@ func (s set) has(value string) bool {
 type OAuth2SecurityProvider struct {
 	provider         OAuth2Provider
 	emailsAuthorized set
-	emailsAdmin      set
 }
 
 func (O OAuth2SecurityProvider) GenerateConnectionButton(context string) string {
@@ -65,15 +64,10 @@ func (O OAuth2SecurityProvider) IsEmailAuthorized(userEmail string) bool {
 	return O.emailsAuthorized.has(userEmail)
 }
 
-func (O OAuth2SecurityProvider) IsEmailAdmin(userEmail string) bool {
-	return O.emailsAdmin.has(userEmail)
-}
-
 func NewOAuth2Provider(conf OAuth2Config) OAuth2SecurityProvider {
 	return OAuth2SecurityProvider{
 		provider:         newProvider(conf),
 		emailsAuthorized: convertListToSet(conf.AuthorizedEmails),
-		emailsAdmin:      convertListToSet(conf.AdminAuthorizedEmails),
 	}
 }
 
@@ -89,6 +83,8 @@ func newProvider(conf OAuth2Config) OAuth2Provider {
 	switch conf.Provider {
 	case "google":
 		return NewGoogleProvider(conf.ClientId, conf.ClientSecret, conf.RedirectUrl)
+	//case "facebook":
+	//	return NewFacebookProvider(conf.ClientId, conf.ClientSecret, conf.RedirectUrl)
 	default:
 		return nil
 	}
@@ -102,7 +98,17 @@ type GoogleProvider struct {
 	urlToken        string
 }
 
-func NewGoogleProvider(clientID, clientSecret, redirectUrl string) GoogleProvider {
+/*func NewFacebookProvider(clientID, clientSecret, redirectUrl string) OAuth2Provider {
+	return GoogleProvider{
+		clientID:        clientID,
+		clientSecret:    clientSecret,
+		redirectUrl:     redirectUrl,
+		urlGenerateCode: "https://accounts.google.com/o/oauth2/v2/auth",
+		urlToken:        "https://oauth2.googleapis.com/token",
+	}
+}*/
+
+func NewGoogleProvider(clientID, clientSecret, redirectUrl string) OAuth2Provider {
 	return GoogleProvider{
 		clientID:        clientID,
 		clientSecret:    clientSecret,
