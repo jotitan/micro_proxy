@@ -18,6 +18,13 @@ var security SecurityAccess
 
 var monitoring Monitoring
 
+const (
+	logLevelAll   = 0
+	logLevelError = 1
+)
+
+var logLevel = logLevelError
+
 func main() {
 	if len(os.Args) < 3 {
 		log.Println("Need parameters <port> <conf>")
@@ -40,6 +47,7 @@ func main() {
 	server := http.NewServeMux()
 	server.HandleFunc("/signature/public-key", getPublicKey)
 	server.HandleFunc("/callback", callback)
+	server.HandleFunc("/loglevel", setLogLevel)
 	server.HandleFunc("/", routing)
 	port := os.Args[1]
 
@@ -117,7 +125,7 @@ func routing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logNice("Unknown route =>", r.URL.Path)
+	logErrorNice("Unknown route =>", r.URL.Path)
 
 	errorNoRoute(w)
 }
@@ -255,7 +263,26 @@ func errorNoGuest(w http.ResponseWriter) {
 	monitoring.addMetric("no-guest")
 }
 
+func setLogLevel(w http.ResponseWriter, r *http.Request) {
+	level := r.FormValue("level")
+	if level == "ERROR" {
+		logLevel = logLevelError
+	} else {
+		logLevel = logLevelAll
+	}
+}
+
 func logNice(args ...string) {
+	if logLevel == logLevelError {
+		return
+	}
+	if strings.HasSuffix(args[len(args)-1], ".map") {
+		return
+	}
+	log.Println(args)
+}
+
+func logErrorNice(args ...string) {
 	if strings.HasSuffix(args[len(args)-1], ".map") {
 		return
 	}

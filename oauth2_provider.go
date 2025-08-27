@@ -98,16 +98,6 @@ type GoogleProvider struct {
 	urlToken        string
 }
 
-/*func NewFacebookProvider(clientID, clientSecret, redirectUrl string) OAuth2Provider {
-	return GoogleProvider{
-		clientID:        clientID,
-		clientSecret:    clientSecret,
-		redirectUrl:     redirectUrl,
-		urlGenerateCode: "https://accounts.google.com/o/oauth2/v2/auth",
-		urlToken:        "https://oauth2.googleapis.com/token",
-	}
-}*/
-
 func NewGoogleProvider(clientID, clientSecret, redirectUrl string) OAuth2Provider {
 	return GoogleProvider{
 		clientID:        clientID,
