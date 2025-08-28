@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"time"
 )
 import "strings"
 import "os"
@@ -23,11 +24,11 @@ const (
 	logLevelError = 1
 )
 
-var logLevel = logLevelError
+var logLevel = logLevelAll
 
 func main() {
 	if len(os.Args) < 3 {
-		log.Println("Need parameters <port> <conf>")
+		logError("Need parameters <port> <conf>")
 		os.Exit(1)
 	}
 
@@ -52,23 +53,23 @@ func main() {
 	port := os.Args[1]
 
 	if !strings.EqualFold("", config.Certificate.PathKey) {
-		log.Println(fmt.Sprintf("Start secured proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
+		logInfo(fmt.Sprintf("Start secured proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
 		log.Fatal(http.ListenAndServeTLS(":"+port, config.Certificate.PathCrt, config.Certificate.PathKey, server))
 	} else {
-		log.Println(fmt.Sprintf("Start proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
+		logInfo(fmt.Sprintf("Start proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
 		log.Fatal(http.ListenAndServe(":"+port, server))
 	}
 }
 
 func acme(w http.ResponseWriter, r *http.Request) {
 	file := r.URL.Path[len("/.well-known/acme-challenge")+1:]
-	log.Println("Run acme challenge", file)
+	logInfo("Run acme challenge", file)
 	reg := regexp.MustCompile("[0-9a-zA-Z_-]+")
 	if !reg.MatchString(file) {
-		log.Println("Error, bad file", file)
+		logError("Error, bad file", file)
 		http.Error(w, "bad request", 400)
 	} else {
-		log.Println("Challenge", r.URL.Path, file)
+		logInfo("Challenge", r.URL.Path, file)
 		http.ServeFile(w, r, filepath.Join(challengesFolder, file))
 	}
 }
@@ -119,15 +120,15 @@ func redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func routing(w http.ResponseWriter, r *http.Request) {
-	logNice("Receive request", r.URL.Path)
+	logInfo("Receive request", r.URL.Path)
 
 	if manageAcme(w, r) || manageLongPath(w, r) || manageRoot(w, r) || manageReferee(w, r) {
 		return
 	}
 
-	logErrorNice("Unknown route =>", r.URL.Path)
-
+	logError("Unknown route =>", r.URL.Path)
 	errorNoRoute(w)
+	timeout()
 }
 
 // manageAcme is used to provides challenges file from certbot
@@ -225,7 +226,7 @@ func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapp
 	r.Header.Set("proxy-redirect", routeName+"/")
 	// SSE case
 	if strings.EqualFold("text/event-stream", r.Header.Get("Accept")) {
-		log.Println("Serve SSE on ", routeName)
+		logInfo("Serve SSE on ", routeName)
 		wrapper.sse.ServeHTTP(w, r)
 	} else {
 		logRoute(routeName, path)
@@ -272,19 +273,27 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func logNice(args ...string) {
+func logInfo(args ...string) {
 	if logLevel == logLevelError {
 		return
 	}
-	if strings.HasSuffix(args[len(args)-1], ".map") {
+	if excludeCase(args...) {
 		return
 	}
-	log.Println(args)
+	log.Println(strings.Join(args, " "))
 }
 
-func logErrorNice(args ...string) {
-	if strings.HasSuffix(args[len(args)-1], ".map") {
+func logError(args ...string) {
+	if excludeCase(args...) {
 		return
 	}
-	log.Println(args)
+	log.Println(strings.Join(args, " "))
+}
+
+func excludeCase(args ...string) bool {
+	return strings.HasSuffix(args[len(args)-1], ".map")
+}
+
+func timeout() {
+	time.Sleep(time.Second * 100)
 }
