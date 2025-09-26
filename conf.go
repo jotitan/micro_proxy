@@ -23,10 +23,11 @@ type BasicConfig struct {
 }
 
 type OAuth2Config struct {
-	Provider     string `json:"provider"`
-	ClientId     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	RedirectUrl  string `json:"redirect_url"`
+	Provider            string            `json:"provider"`
+	ClientId            string            `json:"client_id"`
+	ClientSecret        string            `json:"client_secret"`
+	RedirectUrl         string            `json:"redirect_url"`
+	RedirectUrlByDomain map[string]string `json:"redirect_url_by_domain"`
 	//AuthorizedEmails []string `json:"emails"`
 }
 

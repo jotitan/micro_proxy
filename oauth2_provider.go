@@ -15,8 +15,8 @@ import (
 
 // Differents provider could be implemented (google, azure...)
 type OAuth2Provider interface {
-	//GenerateUrlConnection generate an url to access application from oauth2 access
-	GenerateUrlConnection(context string) string
+	//GenerateUrlConnection generate an url to access application from oauth2 access. Domain define where to redirect after all
+	GenerateUrlConnection(context, domain string) string
 	// GetTokenFromCode Get a valid jwt token from oauth2 provider from code
 	GetTokenFromCode(code string) (string, error)
 	// CheckAndExtractData extract data from jwt token
@@ -36,13 +36,13 @@ type OAuth2SecurityProvider struct {
 	emailsAuthorizedByDomain map[string]set
 }
 
-func (O OAuth2SecurityProvider) GenerateConnectionButton(context string) string {
-	return O.provider.GenerateUrlConnection(context)
+func (O OAuth2SecurityProvider) GenerateConnectionButton(context, domain string) string {
+	return O.provider.GenerateUrlConnection(context, domain)
 }
 
-func (O OAuth2SecurityProvider) InitConnect(w http.ResponseWriter, context string) {
+func (O OAuth2SecurityProvider) InitConnect(w http.ResponseWriter, context, domain string) {
 	// Redirect user
-	w.Header().Set("Location", O.provider.GenerateUrlConnection(context))
+	w.Header().Set("Location", O.provider.GenerateUrlConnection(context, domain))
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
@@ -89,7 +89,7 @@ func convertListToSet(list []string) set {
 func newProvider(conf OAuth2Config) OAuth2Provider {
 	switch conf.Provider {
 	case "google":
-		return NewGoogleProvider(conf.ClientId, conf.ClientSecret, conf.RedirectUrl)
+		return NewGoogleProvider(conf.ClientId, conf.ClientSecret, conf.RedirectUrl, conf.RedirectUrlByDomain)
 	//case "facebook":
 	//	return NewFacebookProvider(conf.ClientId, conf.ClientSecret, conf.RedirectUrl)
 	default:
@@ -98,26 +98,32 @@ func newProvider(conf OAuth2Config) OAuth2Provider {
 }
 
 type GoogleProvider struct {
-	clientID        string
-	clientSecret    string
-	urlGenerateCode string
-	redirectUrl     string
-	urlToken        string
+	clientID            string
+	clientSecret        string
+	urlGenerateCode     string
+	redirectUrl         string
+	redirectUrlByDomain map[string]string
+	urlToken            string
 }
 
-func NewGoogleProvider(clientID, clientSecret, redirectUrl string) OAuth2Provider {
+func NewGoogleProvider(clientID, clientSecret, redirectUrl string, redirectUrlByDomain map[string]string) OAuth2Provider {
 	return GoogleProvider{
-		clientID:        clientID,
-		clientSecret:    clientSecret,
-		redirectUrl:     redirectUrl,
-		urlGenerateCode: "https://accounts.google.com/o/oauth2/v2/auth",
-		urlToken:        "https://oauth2.googleapis.com/token",
+		clientID:            clientID,
+		clientSecret:        clientSecret,
+		redirectUrl:         redirectUrl,
+		redirectUrlByDomain: redirectUrlByDomain,
+		urlGenerateCode:     "https://accounts.google.com/o/oauth2/v2/auth",
+		urlToken:            "https://oauth2.googleapis.com/token",
 	}
 }
 
-func (gp GoogleProvider) GenerateUrlConnection(context string) string {
+func (gp GoogleProvider) GenerateUrlConnection(context, domain string) string {
+	urlCallback := gp.redirectUrl
+	if foundUrl, exists := gp.redirectUrlByDomain[domain]; exists {
+		urlCallback = foundUrl
+	}
 	return fmt.Sprintf("%s?scope=%s&client_id=%s&redirect_uri=%s&response_type=code&flowName=GeneralOAuthFlow&state=%s",
-		gp.urlGenerateCode, "https://www.googleapis.com/auth/userinfo.email", gp.clientID, url.PathEscape(gp.redirectUrl), context)
+		gp.urlGenerateCode, "https://www.googleapis.com/auth/userinfo.email", gp.clientID, url.PathEscape(urlCallback), context)
 }
 
 func (gp GoogleProvider) CheckAndExtractData(token string) (string, error) {

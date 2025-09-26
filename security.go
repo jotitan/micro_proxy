@@ -10,8 +10,8 @@ import (
 const jwtCookieName = "token"
 
 type SecurityProvider interface {
-	InitConnect(w http.ResponseWriter, context string)
-	GenerateConnectionButton(context string) string
+	InitConnect(w http.ResponseWriter, context, domain string)
+	GenerateConnectionButton(context, domain string) string
 	GetEmailFromAuthent(r *http.Request) (string, error)
 	IsEmailAuthorized(email, domain string) bool
 }
@@ -64,7 +64,7 @@ func (sa SecurityAccess) check(w http.ResponseWriter, r *http.Request, wrapper p
 	}
 	token, err := sa.getJWT(r)
 	if err != nil {
-		sa.initConnect(w, wrapper, path, buildContextURL(r))
+		sa.initConnect(w, wrapper, path, getHost(r), buildContextURL(r))
 		return false, nil
 	}
 	return sa.checkRights(token, wrapper, path, getHost(r))
@@ -96,17 +96,17 @@ func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, pat
 	return true, nil
 }
 
-func (sa SecurityAccess) initConnect(w http.ResponseWriter, wrapper proxyWrapper, path, fullPath string) {
+func (sa SecurityAccess) initConnect(w http.ResponseWriter, wrapper proxyWrapper, path, domain, fullPath string) {
 	if wrapper.guest {
-		sa.showGuestSSOOptions(w, fullPath)
+		sa.showGuestSSOOptions(w, fullPath, domain)
 	} else {
-		sa.provider.InitConnect(w, fullPath)
+		sa.provider.InitConnect(w, fullPath, domain)
 	}
 }
 
-func (sa SecurityAccess) showGuestSSOOptions(w http.ResponseWriter, path string) {
+func (sa SecurityAccess) showGuestSSOOptions(w http.ResponseWriter, path, domain string) {
 	w.Header().Set("Content-Type", "text/html")
-	html := createTemplate(links{LinkGuest: fmt.Sprintf("/callback?kind=guest&state=%s", path), LinkSSO: sa.provider.GenerateConnectionButton(path)})
+	html := createTemplate(links{LinkGuest: fmt.Sprintf("/callback?kind=guest&state=%s", path), LinkSSO: sa.provider.GenerateConnectionButton(path, domain)})
 	w.Write(html)
 }
 
