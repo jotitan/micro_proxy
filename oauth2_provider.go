@@ -18,7 +18,7 @@ type OAuth2Provider interface {
 	//GenerateUrlConnection generate an url to access application from oauth2 access. Domain define where to redirect after all
 	GenerateUrlConnection(context, domain string) string
 	// GetTokenFromCode Get a valid jwt token from oauth2 provider from code
-	GetTokenFromCode(code string) (string, error)
+	GetTokenFromCode(code, domain string) (string, error)
 	// CheckAndExtractData extract data from jwt token
 	CheckAndExtractData(token string) (string, error)
 }
@@ -47,7 +47,7 @@ func (O OAuth2SecurityProvider) InitConnect(w http.ResponseWriter, context, doma
 }
 
 func (O OAuth2SecurityProvider) GetEmailFromAuthent(r *http.Request) (string, error) {
-	token, err := O.provider.GetTokenFromCode(r.FormValue("code"))
+	token, err := O.provider.GetTokenFromCode(r.FormValue("code"), getHost(r))
 	if err != nil {
 		return "", err
 	}
@@ -144,8 +144,12 @@ func (gp GoogleProvider) CheckAndExtractData(token string) (string, error) {
 }
 
 // Get a JWT token on google oauth2 from code
-func (gp GoogleProvider) GetTokenFromCode(code string) (string, error) {
-	urlGetToken := fmt.Sprintf("%s?client_id=%s&client_secret=%s&code=%s&redirect_uri=%s&grant_type=authorization_code", gp.urlToken, gp.clientID, gp.clientSecret, code, gp.redirectUrl)
+func (gp GoogleProvider) GetTokenFromCode(code, domain string) (string, error) {
+	urlCallback := gp.redirectUrl
+	if foundUrl, exists := gp.redirectUrlByDomain[domain]; exists {
+		urlCallback = foundUrl
+	}
+	urlGetToken := fmt.Sprintf("%s?client_id=%s&client_secret=%s&code=%s&redirect_uri=%s&grant_type=authorization_code", gp.urlToken, gp.clientID, gp.clientSecret, code, urlCallback)
 
 	if resp, err := http.PostForm(urlGetToken, url.Values{}); err == nil && resp.StatusCode == 200 {
 		if data, err := io.ReadAll(resp.Body); err == nil {
