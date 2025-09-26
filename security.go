@@ -13,7 +13,7 @@ type SecurityProvider interface {
 	InitConnect(w http.ResponseWriter, context string)
 	GenerateConnectionButton(context string) string
 	GetEmailFromAuthent(r *http.Request) (string, error)
-	IsEmailAuthorized(email string) bool
+	IsEmailAuthorized(email, domain string) bool
 }
 
 type SecurityAccess struct {
@@ -36,15 +36,23 @@ func NewSecurityAccess(conf Config) SecurityAccess {
 	case basicSecurity:
 
 	case oauth2Security:
-		s.provider = NewOAuth2Provider(conf.Security.OAuth2)
+		s.provider = NewOAuth2Provider(conf.Security.OAuth2, buildAuthorizedEmailByOrigins(conf))
 	}
 	return s
 }
 
-func loadProviders(conf Security) map[string]SecurityProvider {
+func buildAuthorizedEmailByOrigins(conf Config) map[string]set {
+	emails := make(map[string]set)
+	for name, config := range conf.Origins {
+		emails[name] = convertListToSet(config.Security.Emails)
+	}
+	return emails
+}
+
+func loadProviders(conf Config) map[string]SecurityProvider {
 	providers := make(map[string]SecurityProvider)
-	for _, p := range conf.Providers {
-		providers[p.Name] = NewOAuth2Provider(p.Config)
+	for _, p := range conf.Security.Providers {
+		providers[p.Name] = NewOAuth2Provider(p.Config, buildAuthorizedEmailByOrigins(conf))
 	}
 	return providers
 }
@@ -59,7 +67,7 @@ func (sa SecurityAccess) check(w http.ResponseWriter, r *http.Request, wrapper p
 		sa.initConnect(w, wrapper, path, buildContextURL(r))
 		return false, nil
 	}
-	return sa.checkRights(token, wrapper, path)
+	return sa.checkRights(token, wrapper, path, getHost(r))
 }
 
 func buildContextURL(r *http.Request) string {
@@ -69,7 +77,7 @@ func buildContextURL(r *http.Request) string {
 	return r.URL.Path[1:] + "?" + r.URL.RawQuery
 }
 
-func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, path string) (bool, error) {
+func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, path, domain string) (bool, error) {
 	// If token is guest, check wrapper enable guest and path is the good
 	claims := token.Claims.(jwt.MapClaims)
 	isGuest, existGuest := claims["guest"].(bool)
@@ -81,7 +89,7 @@ func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, pat
 	} else {
 		// Check user email exist in listExistingKeys
 		email, existEmail := claims["email"].(string)
-		if !existEmail || !sa.provider.IsEmailAuthorized(email) {
+		if !existEmail || !sa.provider.IsEmailAuthorized(email, domain) {
 			return false, errors.New("no access here")
 		}
 	}

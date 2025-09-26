@@ -120,13 +120,13 @@ func redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func routing(w http.ResponseWriter, r *http.Request) {
-	logInfo("Receive request", r.URL.Path)
+	logInfo("Receive request", r.URL.Path, r.Referer())
 
 	if manageAcme(w, r) || manageLongPath(w, r) || manageRoot(w, r) || manageReferee(w, r) {
 		return
 	}
 
-	logError("Unknown route =>", r.URL.Path)
+	logError("Unknown route =>", r.URL.Path, r.Referer(), r.URL.RequestURI())
 	errorNoRoute(w)
 	timeout()
 }

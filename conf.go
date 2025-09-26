@@ -23,11 +23,11 @@ type BasicConfig struct {
 }
 
 type OAuth2Config struct {
-	Provider         string   `json:"provider"`
-	ClientId         string   `json:"client_id"`
-	ClientSecret     string   `json:"client_secret"`
-	RedirectUrl      string   `json:"redirect_url"`
-	AuthorizedEmails []string `json:"emails"`
+	Provider     string `json:"provider"`
+	ClientId     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	RedirectUrl  string `json:"redirect_url"`
+	//AuthorizedEmails []string `json:"emails"`
 }
 
 type Security struct {
@@ -59,7 +59,12 @@ type routeProxy struct {
 }
 
 type OriginConfig struct {
-	Routes []routeProxy `json:"routes"`
+	Routes   []routeProxy         `json:"routes"`
+	Security OriginSecurityConfig `json:"security"`
+}
+
+type OriginSecurityConfig struct {
+	Emails []string `json:"emails"`
 }
 
 type Config struct {

@@ -31,8 +31,9 @@ func (s set) has(value string) bool {
 }
 
 type OAuth2SecurityProvider struct {
-	provider         OAuth2Provider
-	emailsAuthorized set
+	provider OAuth2Provider
+	//emailsAuthorized         set
+	emailsAuthorizedByDomain map[string]set
 }
 
 func (O OAuth2SecurityProvider) GenerateConnectionButton(context string) string {
@@ -50,24 +51,30 @@ func (O OAuth2SecurityProvider) GetEmailFromAuthent(r *http.Request) (string, er
 	if err != nil {
 		return "", err
 	}
+	domain := getHost(r)
 	email, err := O.provider.CheckAndExtractData(token)
 	if err != nil {
 		return "", err
 	}
-	if !O.IsEmailAuthorized(email) {
+	if !O.IsEmailAuthorized(email, domain) {
 		return "", errors.New("unauthorized email")
 	}
 	return email, nil
 }
 
-func (O OAuth2SecurityProvider) IsEmailAuthorized(userEmail string) bool {
-	return O.emailsAuthorized.has(userEmail)
+func (O OAuth2SecurityProvider) IsEmailAuthorized(userEmail, domain string) bool {
+	if emails, exist := O.emailsAuthorizedByDomain[domain]; exist {
+		return emails.has(userEmail)
+	}
+	//return O.emailsAuthorized.has(userEmail)
+	return false
 }
 
-func NewOAuth2Provider(conf OAuth2Config) OAuth2SecurityProvider {
+func NewOAuth2Provider(conf OAuth2Config, emailsAuthorizedByDomain map[string]set) OAuth2SecurityProvider {
 	return OAuth2SecurityProvider{
-		provider:         newProvider(conf),
-		emailsAuthorized: convertListToSet(conf.AuthorizedEmails),
+		provider: newProvider(conf),
+		//emailsAuthorized:         convertListToSet(conf.AuthorizedEmails),
+		emailsAuthorizedByDomain: emailsAuthorizedByDomain,
 	}
 }
 
