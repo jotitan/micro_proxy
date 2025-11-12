@@ -26,8 +26,9 @@ jobs:
         export GOARCH=arm
         cd src
         go build -o micro_proxy main/main.go
+        cd ..
         mkdir artifacts
-        mv micro_proxy artifacts
+        mv src/micro_proxy artifacts
 
     # Upload artifact
     - uses: actions/upload-artifact@v4
