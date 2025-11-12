@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/jotitan/proxy_server/proxy"
+
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -12,13 +14,13 @@ import "strings"
 import "os"
 import "log"
 
-var proxyRoutes map[string]proxyWrapper
-var originsRoutes map[string]map[string]proxyWrapper
+var proxyRoutes map[string]proxy.ProxyWrapper
+var originsRoutes map[string]map[string]proxy.ProxyWrapper
 var challengesFolder string
 
-var security SecurityAccess
+var security proxy.SecurityAccess
 
-var monitoring Monitoring
+var monitoring proxy.Monitoring
 
 const (
 	logLevelAll   = 0
@@ -33,18 +35,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := extractConfig(os.Args[2])
+	config, err := proxy.ExtractConfig(os.Args[2])
 	if err != nil {
 		log.Fatal("Impossible to extract config", err)
 	}
 	if config.ProxyByRoute {
-		proxyRoutes = createProxyRoutes(config.Routes)
+		proxyRoutes = proxy.CreateProxyRoutes(config.Routes)
 	} else {
-		originsRoutes = createProxyRoutesByOrigin(config.Origins)
+		originsRoutes = proxy.CreateProxyRoutesByOrigin(config.Origins)
 	}
 	challengesFolder = config.ChallengesFolder
-	security = NewSecurityAccess(config)
-	monitoring = NewMonitoring(config.Monitoring)
+	security = proxy.NewSecurityAccess(config)
+	monitoring = proxy.NewMonitoring(config.Monitoring)
 
 	port := os.Args[1]
 	serverMux := http.NewServeMux()
@@ -85,7 +87,7 @@ func acme(w http.ResponseWriter, r *http.Request) {
 
 // callback is used by security
 func getPublicKey(w http.ResponseWriter, r *http.Request) {
-	if data, err := security.signatureTool.GetPublicKey(r.FormValue("kid")); err != nil {
+	if data, err := security.SignatureTool.GetPublicKey(r.FormValue("kid")); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.Write(data)
@@ -94,7 +96,7 @@ func getPublicKey(w http.ResponseWriter, r *http.Request) {
 
 func callback(w http.ResponseWriter, r *http.Request) {
 	// Check if token already exist
-	if security.isConnected(r) {
+	if security.IsConnected(r) {
 		redirect(w, r)
 		return
 	}
@@ -105,16 +107,16 @@ func callback(w http.ResponseWriter, r *http.Request) {
 		if pos := strings.Index(scope, "/"); pos != -1 {
 			scope = scope[0:pos]
 		}
-		if proxy, exist := searchRoute(scope, getHost(r)); exist {
-			if security.checkAndConnectAsGuest(w, proxy, scope) {
+		if proxy, exist := searchRoute(scope, proxy.GetHost(r)); exist {
+			if security.CheckAndConnectAsGuest(w, proxy, scope) {
 				redirect(w, r)
 				return
 			}
 		}
 		errorNoGuest(w)
 	} else {
-		if email, err := security.provider.GetEmailFromAuthent(r); err == nil {
-			security.setJWT(w, email, scope, getAdminByScope(email, getHost(r)), false)
+		if email, err := security.Provider.GetEmailFromAuthent(r); err == nil {
+			security.SetJWT(w, email, scope, getAdminByScope(email, proxy.GetHost(r)), false)
 			redirect(w, r)
 		} else {
 			errorNoLogin(w, err.Error())
@@ -149,18 +151,18 @@ func manageAcme(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func getRoutes(host string) map[string]proxyWrapper {
+func getRoutes(host string) map[string]proxy.ProxyWrapper {
 	if len(proxyRoutes) > 0 {
 		return proxyRoutes
 	}
 	if routes, exist := originsRoutes[host]; !exist {
-		return map[string]proxyWrapper{}
+		return map[string]proxy.ProxyWrapper{}
 	} else {
 		return routes
 	}
 }
 
-func searchRoute(route, host string) (proxyWrapper, bool) {
+func searchRoute(route, host string) (proxy.ProxyWrapper, bool) {
 	routes := getRoutes(host)
 	proxy, exist := routes[route]
 	return proxy, exist
@@ -169,25 +171,16 @@ func searchRoute(route, host string) (proxyWrapper, bool) {
 func getAdminByScope(email, host string) map[string]bool {
 	m := make(map[string]bool)
 	for name, route := range getRoutes(host) {
-		m[name] = route.admins.has(email)
+		m[name] = route.Admins.Has(email)
 	}
 	return m
-}
-
-func getHost(r *http.Request) string {
-	reg := regexp.MustCompile("(:?https?://)?([^:]+)(:?:[0-9]+)?")
-	results := reg.FindAllStringSubmatch(r.Host, 1)
-	if len(results) == 0 {
-		return r.Host
-	}
-	return results[0][2]
 }
 
 // manageLongPath manage a complete path by extracting the beginning to find the route
 func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
 	if pos := strings.Index(r.URL.Path[1:], "/"); pos != -1 {
 		subPath := r.URL.Path[1 : pos+1]
-		if route, exist := searchRoute(subPath, getHost(r)); exist {
+		if route, exist := searchRoute(subPath, proxy.GetHost(r)); exist {
 			// Redirect
 			serve(w, r, subPath, r.URL.Path[1+pos:], route)
 			return true
@@ -198,7 +191,7 @@ func manageLongPath(w http.ResponseWriter, r *http.Request) bool {
 
 // manageRoot test if route exist and serve request
 func manageRoot(w http.ResponseWriter, r *http.Request) bool {
-	if route, exist := searchRoute(r.URL.Path[1:], getHost(r)); exist {
+	if route, exist := searchRoute(r.URL.Path[1:], proxy.GetHost(r)); exist {
 		if !strings.HasSuffix(r.URL.Path[1:], "/") {
 			w.Header().Set("Location", "/"+r.URL.Path[1:]+"/")
 			w.WriteHeader(308)
@@ -212,7 +205,7 @@ func manageRoot(w http.ResponseWriter, r *http.Request) bool {
 
 // Check if referee contains route, if true, redirect to also, range over routes
 func manageReferee(w http.ResponseWriter, r *http.Request) bool {
-	routes := getRoutes(getHost(r))
+	routes := getRoutes(proxy.GetHost(r))
 	for route, gateway := range routes {
 		if strings.Index(r.Referer(), route) != -1 {
 			serve(w, r, route, r.URL.Path[1:], gateway)
@@ -222,9 +215,9 @@ func manageReferee(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapper proxyWrapper) {
+func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapper proxy.ProxyWrapper) {
 	// If security, check token exists
-	doContinue, err := security.check(w, r, wrapper, routeName)
+	doContinue, err := security.Check(w, r, wrapper, routeName)
 	if err != nil {
 		errorNoRight(w)
 	}
@@ -236,41 +229,41 @@ func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapp
 	// SSE case
 	if strings.EqualFold("text/event-stream", r.Header.Get("Accept")) {
 		logInfo("Serve SSE on ", routeName)
-		wrapper.sse.ServeHTTP(w, r)
+		wrapper.Sse.ServeHTTP(w, r)
 	} else {
 		logRoute(routeName, path)
-		wrapper.standard.ServeHTTP(w, r)
+		wrapper.Standard.ServeHTTP(w, r)
 	}
 }
 
 func logRoute(route, path string) {
-	monitoring.addMetric("success")
-	monitoring.addMetric(route)
+	monitoring.AddMetric("success")
+	monitoring.AddMetric(route)
 	isRequest := !strings.Contains(path, ".") || strings.Contains(path, "?")
 	if isRequest {
-		monitoring.addMetric("request")
+		monitoring.AddMetric("request")
 	} else {
-		monitoring.addMetric("file")
+		monitoring.AddMetric("file")
 	}
 }
 
 func errorNoRight(w http.ResponseWriter) {
 	http.Error(w, "No rights, get out", http.StatusUnauthorized)
-	monitoring.addMetric("no-right")
+	monitoring.AddMetric("no-right")
 }
 
 func errorNoLogin(w http.ResponseWriter, err string) {
 	http.Error(w, err, http.StatusUnauthorized)
-	monitoring.addMetric("no-log")
+	monitoring.AddMetric("no-log")
 }
 
 func errorNoRoute(w http.ResponseWriter) {
 	http.Error(w, "no route", http.StatusNotFound)
-	monitoring.addMetric("no-route")
+	monitoring.AddMetric("no-route")
 }
 func errorNoGuest(w http.ResponseWriter) {
 	http.Error(w, "Impossible to connect as guest, get out", http.StatusUnauthorized)
-	monitoring.addMetric("no-guest")
+	monitoring.AddMetric("no-guest")
 }
 
 func setLogLevel(w http.ResponseWriter, r *http.Request) {

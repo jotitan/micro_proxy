@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"encoding/json"
@@ -11,13 +11,13 @@ import (
 	"strings"
 )
 
-// Give oauth2 provider to let acccess to application
+// Give oauth2 Provider to let acccess to application
 
-// Differents provider could be implemented (google, azure...)
+// Differents Provider could be implemented (google, azure...)
 type OAuth2Provider interface {
 	//GenerateUrlConnection generate an url to access application from oauth2 access. Domain define where to redirect after all
 	GenerateUrlConnection(context, domain string) string
-	// GetTokenFromCode Get a valid jwt token from oauth2 provider from code
+	// GetTokenFromCode Get a valid jwt token from oauth2 Provider from code
 	GetTokenFromCode(code, domain string) (string, error)
 	// CheckAndExtractData extract data from jwt token
 	CheckAndExtractData(token string) (string, error)
@@ -25,7 +25,7 @@ type OAuth2Provider interface {
 
 type set map[string]struct{}
 
-func (s set) has(value string) bool {
+func (s set) Has(value string) bool {
 	_, exist := s[value]
 	return exist
 }
@@ -47,11 +47,11 @@ func (O OAuth2SecurityProvider) InitConnect(w http.ResponseWriter, context, doma
 }
 
 func (O OAuth2SecurityProvider) GetEmailFromAuthent(r *http.Request) (string, error) {
-	token, err := O.provider.GetTokenFromCode(r.FormValue("code"), getHost(r))
+	token, err := O.provider.GetTokenFromCode(r.FormValue("code"), GetHost(r))
 	if err != nil {
 		return "", err
 	}
-	domain := getHost(r)
+	domain := GetHost(r)
 	email, err := O.provider.CheckAndExtractData(token)
 	if err != nil {
 		return "", err
@@ -64,9 +64,9 @@ func (O OAuth2SecurityProvider) GetEmailFromAuthent(r *http.Request) (string, er
 
 func (O OAuth2SecurityProvider) IsEmailAuthorized(userEmail, domain string) bool {
 	if emails, exist := O.emailsAuthorizedByDomain[domain]; exist {
-		return emails.has(userEmail)
+		return emails.Has(userEmail)
 	}
-	//return O.emailsAuthorized.has(userEmail)
+	//return O.emailsAuthorized.Has(userEmail)
 	return false
 }
 
@@ -164,7 +164,7 @@ func (gp GoogleProvider) GetTokenFromCode(code, domain string) (string, error) {
 		}
 	} else {
 		if err == nil {
-			return "", errors.New("no token send by google provider")
+			return "", errors.New("no token send by google Provider")
 		}
 		return "", err
 	}

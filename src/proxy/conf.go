@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ type BasicConfig struct {
 }
 
 type OAuth2Config struct {
-	Provider            string            `json:"provider"`
+	Provider            string            `json:"Provider"`
 	ClientId            string            `json:"client_id"`
 	ClientSecret        string            `json:"client_secret"`
 	RedirectUrl         string            `json:"redirect_url"`
@@ -78,7 +78,7 @@ type Config struct {
 	Monitoring       string                  `json:"monitoring_url"`
 }
 
-func extractConfig(path string) (Config, error) {
+func ExtractConfig(path string) (Config, error) {
 	if data, err := os.ReadFile(path); err == nil {
 		var config Config
 		err = json.Unmarshal(data, &config)

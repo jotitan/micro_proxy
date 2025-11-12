@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"bytes"
@@ -69,7 +69,7 @@ func (m Monitoring) runReceiveEvents() {
 	}()
 }
 
-func (m Monitoring) addMetric(kind string) {
+func (m Monitoring) AddMetric(kind string) {
 	m.chanel <- kind
 }
 

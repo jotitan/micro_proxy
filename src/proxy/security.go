@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"errors"
@@ -18,9 +18,9 @@ type SecurityProvider interface {
 
 type SecurityAccess struct {
 	enable        bool
-	signatureTool JwtSignatureTool
-	provider      SecurityProvider
-	// List of security provider
+	SignatureTool JwtSignatureTool
+	Provider      SecurityProvider
+	// List of security Provider
 	providers map[string]SecurityProvider
 }
 
@@ -29,14 +29,14 @@ func NewSecurityAccess(conf Config) SecurityAccess {
 		return SecurityAccess{enable: false}
 	}
 	s := SecurityAccess{
-		signatureTool: NewSignatureTool(conf),
+		SignatureTool: NewSignatureTool(conf),
 		enable:        true,
 	}
 	switch conf.Security.Type {
 	case basicSecurity:
 
 	case oauth2Security:
-		s.provider = NewOAuth2Provider(conf.Security.OAuth2, buildAuthorizedEmailByOrigins(conf))
+		s.Provider = NewOAuth2Provider(conf.Security.OAuth2, buildAuthorizedEmailByOrigins(conf))
 	}
 	return s
 }
@@ -57,17 +57,17 @@ func loadProviders(conf Config) map[string]SecurityProvider {
 	return providers
 }
 
-// check return true if process can continue or false if not needed. Error is returned when bad access
-func (sa SecurityAccess) check(w http.ResponseWriter, r *http.Request, wrapper proxyWrapper, path string) (bool, error) {
+// Check return true if process can continue or false if not needed. Error is returned when bad access
+func (sa SecurityAccess) Check(w http.ResponseWriter, r *http.Request, wrapper ProxyWrapper, path string) (bool, error) {
 	if !wrapper.security {
 		return true, nil
 	}
 	token, err := sa.getJWT(r)
 	if err != nil {
-		sa.initConnect(w, wrapper, path, getHost(r), buildContextURL(r))
+		sa.initConnect(w, wrapper, path, GetHost(r), buildContextURL(r))
 		return false, nil
 	}
-	return sa.checkRights(token, wrapper, path, getHost(r))
+	return sa.checkRights(token, wrapper, path, GetHost(r))
 }
 
 func buildContextURL(r *http.Request) string {
@@ -77,8 +77,8 @@ func buildContextURL(r *http.Request) string {
 	return r.URL.Path[1:] + "?" + r.URL.RawQuery
 }
 
-func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, path, domain string) (bool, error) {
-	// If token is guest, check wrapper enable guest and path is the good
+func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper ProxyWrapper, path, domain string) (bool, error) {
+	// If token is guest, Check wrapper enable guest and path is the good
 	claims := token.Claims.(jwt.MapClaims)
 	isGuest, existGuest := claims["guest"].(bool)
 	scope, existScope := claims["scope"].(string)
@@ -89,24 +89,24 @@ func (sa SecurityAccess) checkRights(token *jwt.Token, wrapper proxyWrapper, pat
 	} else {
 		// Check user email exist in listExistingKeys
 		email, existEmail := claims["email"].(string)
-		if !existEmail || !sa.provider.IsEmailAuthorized(email, domain) {
+		if !existEmail || !sa.Provider.IsEmailAuthorized(email, domain) {
 			return false, errors.New("no access here")
 		}
 	}
 	return true, nil
 }
 
-func (sa SecurityAccess) initConnect(w http.ResponseWriter, wrapper proxyWrapper, path, domain, fullPath string) {
+func (sa SecurityAccess) initConnect(w http.ResponseWriter, wrapper ProxyWrapper, path, domain, fullPath string) {
 	if wrapper.guest {
 		sa.showGuestSSOOptions(w, fullPath, domain)
 	} else {
-		sa.provider.InitConnect(w, fullPath, domain)
+		sa.Provider.InitConnect(w, fullPath, domain)
 	}
 }
 
 func (sa SecurityAccess) showGuestSSOOptions(w http.ResponseWriter, path, domain string) {
 	w.Header().Set("Content-Type", "text/html")
-	html := createTemplate(links{LinkGuest: fmt.Sprintf("/callback?kind=guest&state=%s", path), LinkSSO: sa.provider.GenerateConnectionButton(path, domain)})
+	html := createTemplate(links{LinkGuest: fmt.Sprintf("/callback?kind=guest&state=%s", path), LinkSSO: sa.Provider.GenerateConnectionButton(path, domain)})
 	w.Write(html)
 }
 
@@ -128,14 +128,14 @@ func (sa SecurityAccess) createJWT(email, scope string, isAdminByScope map[strin
 	for route, isAdmin := range isAdminByScope {
 		claims[fmt.Sprintf("admin_%s", route)] = isAdmin
 	}
-	return sa.signatureTool.SignToken(claims)
+	return sa.SignatureTool.SignToken(claims)
 }
 
-func (sa SecurityAccess) checkAndConnectAsGuest(w http.ResponseWriter, wrapper proxyWrapper, context string) bool {
+func (sa SecurityAccess) CheckAndConnectAsGuest(w http.ResponseWriter, wrapper ProxyWrapper, context string) bool {
 	if !wrapper.security || !wrapper.guest {
 		return false
 	}
-	return sa.setJWT(w, "guest", context, map[string]bool{}, true) == nil
+	return sa.SetJWT(w, "guest", context, map[string]bool{}, true) == nil
 }
 
 func (sa SecurityAccess) createJWTCookie(w http.ResponseWriter, value string) {
@@ -148,7 +148,7 @@ func (sa SecurityAccess) createJWTCookie(w http.ResponseWriter, value string) {
 	})
 }
 
-func (sa SecurityAccess) setJWT(w http.ResponseWriter, email, scope string, isAdminByScope map[string]bool, isGuest bool) error {
+func (sa SecurityAccess) SetJWT(w http.ResponseWriter, email, scope string, isAdminByScope map[string]bool, isGuest bool) error {
 	token, err := sa.createJWT(email, scope, isAdminByScope, isGuest)
 	if err != nil {
 		return err
@@ -157,7 +157,7 @@ func (sa SecurityAccess) setJWT(w http.ResponseWriter, email, scope string, isAd
 	return nil
 }
 
-func (sa SecurityAccess) isConnected(r *http.Request) bool {
+func (sa SecurityAccess) IsConnected(r *http.Request) bool {
 	_, err := sa.getJWT(r)
 	return err == nil
 }
@@ -165,7 +165,7 @@ func (sa SecurityAccess) isConnected(r *http.Request) bool {
 func (sa SecurityAccess) getJWT(r *http.Request) (*jwt.Token, error) {
 	// Check if jwt token exist in a cookie and is valid. Create by server during first connexion
 	if token, err := sa.getJWTCookie(r); err == nil {
-		return sa.signatureTool.GetJWT(token)
+		return sa.SignatureTool.GetJWT(token)
 	}
 	return nil, errors.New("impossible to get jwt")
 }
