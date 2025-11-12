@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -45,19 +46,27 @@ func main() {
 	security = NewSecurityAccess(config)
 	monitoring = NewMonitoring(config.Monitoring)
 
-	server := http.NewServeMux()
-	server.HandleFunc("/signature/public-key", getPublicKey)
-	server.HandleFunc("/callback", callback)
-	server.HandleFunc("/loglevel", setLogLevel)
-	server.HandleFunc("/", routing)
 	port := os.Args[1]
+	serverMux := http.NewServeMux()
+	server := http.Server{
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+		Addr:    ":" + port,
+		Handler: serverMux,
+	}
+
+	serverMux.HandleFunc("/signature/public-key", getPublicKey)
+	serverMux.HandleFunc("/callback", callback)
+	serverMux.HandleFunc("/loglevel", setLogLevel)
+	serverMux.HandleFunc("/", routing)
 
 	if !strings.EqualFold("", config.Certificate.PathKey) {
 		logInfo(fmt.Sprintf("Start secured proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
-		log.Fatal(http.ListenAndServeTLS(":"+port, config.Certificate.PathCrt, config.Certificate.PathKey, server))
+		log.Fatal(server.ListenAndServeTLS(config.Certificate.PathCrt, config.Certificate.PathKey))
 	} else {
 		logInfo(fmt.Sprintf("Start proxy on port %s with %d / %d routes", port, len(proxyRoutes), len(originsRoutes)))
-		log.Fatal(http.ListenAndServe(":"+port, server))
+		log.Fatal(server.ListenAndServe())
 	}
 }
 
