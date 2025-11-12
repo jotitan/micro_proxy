@@ -24,7 +24,7 @@ jobs:
         echo Run build proxy server
         export GOOS=linux
         export GOARCH=arm
-        go build -o micro_proxy main.go
+        go build -o micro_proxy .
         mkdir artifacts
         mv micro_proxy artifacts
 
