@@ -1,4 +1,4 @@
-module proxy_server
+module github.com/jotitan/proxy_server
 
 go 1.19
 
