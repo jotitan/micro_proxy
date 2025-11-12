@@ -1,0 +1,35 @@
+# Workflow to build at each commit in master the application
+
+name: CI build micro proxy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+      # Build server
+    - name: Build Proxy
+      run: |
+        echo Run build proxy server
+        export GOOS=linux
+        export GOARCH=arm
+        go build -o micro_proxy main.go
+        mkdir artifacts
+        mv micro_proxy artifacts
+
+    # Upload artifact
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Create artifacts
+        path: artifacts
