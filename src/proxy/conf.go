@@ -47,8 +47,10 @@ type ProviderConfig struct {
 }
 
 type routeProxy struct {
-	Name string `json:"route"`
-	Host string `json:"host"`
+	Name          string `json:"route"`
+	Host          string `json:"host"`
+	IsServeFolder bool   `json:"serve_folder"` // To serve static file in folder
+	ServeFolder   string `json:"folder"`       // Folder to serve
 	// if true, create a special proxy to manage Sse request
 	Sse      bool `json:"sse"`
 	Security bool `json:"security"`

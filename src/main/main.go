@@ -164,8 +164,8 @@ func getRoutes(host string) map[string]proxy.ProxyWrapper {
 
 func searchRoute(route, host string) (proxy.ProxyWrapper, bool) {
 	routes := getRoutes(host)
-	proxy, exist := routes[route]
-	return proxy, exist
+	p, exist := routes[route]
+	return p, exist
 }
 
 func getAdminByScope(email, host string) map[string]bool {
@@ -225,12 +225,16 @@ func serve(w http.ResponseWriter, r *http.Request, routeName, path string, wrapp
 		return
 	}
 	r.URL.Path = path
-	r.Header.Set("proxy-redirect", routeName+"/")
-	// SSE case
-	if strings.EqualFold("text/event-stream", r.Header.Get("Accept")) {
+
+	switch {
+	case wrapper.IsServeFile:
+		wrapper.ServeFile(w, r)
+	case strings.EqualFold("text/event-stream", r.Header.Get("Accept")):
+		r.Header.Set("proxy-redirect", routeName+"/")
 		logInfo("Serve SSE on ", routeName)
 		wrapper.Sse.ServeHTTP(w, r)
-	} else {
+	default:
+		r.Header.Set("proxy-redirect", routeName+"/")
 		logRoute(routeName, path)
 		wrapper.Standard.ServeHTTP(w, r)
 	}
